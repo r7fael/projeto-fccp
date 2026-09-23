@@ -93,6 +93,15 @@ POST /reservas
 
 O endpoint de confirmação retorna `202 Accepted` porque enfileira o trabalho. A confirmação final ocorre depois, em um worker.
 
+### Por que REST sobre HTTP com JSON
+
+
+Optamos por REST sobre HTTP com JSON em vez de gRPC porque, nesta entrega, o sistema é single-node e o objetivo é evidenciar concorrência local — não desempenho de serialização entre serviços. REST/JSON também facilita testar manualmente com `curl` ou Postman durante o desenvolvimento, sem precisar gerar stubs a partir de um `.proto`.
+
+Descartamos WebSocket para notificar o cliente sobre o resultado da confirmação porque o escopo da entrega não exige push em tempo real; o cliente pode consultar o status da reserva via `GET`, o que mantém o protocolo mais simples e sem estado de conexão para gerenciar.
+
+A resposta `202 Accepted` (em vez de manter a conexão HTTP aberta até o worker terminar de processar) foi escolhida para não bloquear a thread da requisição enquanto o processamento assíncrono ocorre — coerente com o uso de virtual threads no servidor e com a `LinkedBlockingQueue` que desacopla a confirmação do fluxo HTTP. Se o sistema evoluir para múltiplos nós (próximas entregas), essa escolha também facilita trocar a fila em memória por uma fila distribuída (ex: Kafka ou RabbitMQ) sem alterar o contrato HTTP exposto ao cliente.
+
 ## Arquitetura
 
 O processo Spring Boot segue as camadas **Controller → Service → Repository → Model**. O controller valida a entrada e chama `ReservaService`; o service aplica as regras e as travas, lê ou altera os repositórios em memória e devolve o resultado para a resposta JSON. Em segundo plano, o expirador e os workers de confirmação usam a mesma estratégia de trava do service.
